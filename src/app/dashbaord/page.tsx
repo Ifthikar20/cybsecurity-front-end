@@ -1,0 +1,1035 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import LoadingAnimation from '../../components/LoadingAnimation';
+
+interface Finding {
+  vulnerability_id: string;
+  description: string;
+  line_number: number;
+  line_content?: string;
+  confidence: string;
+  severity?: string;
+  match_position?: {
+    start: number;
+    end: number;
+  };
+  reasoning_id?: string;
+}
+
+interface Recommendation {
+  priority: string;
+  action: string;
+}
+
+interface AnalysisResults {
+  basic_findings: Finding[];
+  deepseek_analysis: {
+    reasoning: any[];
+    confirmed_findings: Finding[];
+    new_findings: Finding[];
+    recommendations: Recommendation[];
+    raw_response?: string;  // Add the raw response field
+    parse_error?: string;   // Optional parse error message
+  };
+  log_summary: {
+    total_lines: number;
+    analysis_timestamp: string;
+    request_timestamp?: string;
+    log_format?: string;
+  };
+}
+
+export default function Dashboard() {
+  const [results, setResults] = useState<AnalysisResults | null>(null);
+  const [loading, setLoading] = useState(true);
+  
+  // Filtering states
+  const [severityFilter, setSeverityFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(10);
+  
+  // Selected vulnerability for detailed view
+  const [selectedVulnerability, setSelectedVulnerability] = useState<string | null>(null);
+  const [detailsModalOpen, setDetailsModalOpen] = useState<boolean>(false);
+  // Track expanded reasoning sections
+  const [expandedReasonings, setExpandedReasonings] = useState<Set<string>>(new Set());
+  
+  useEffect(() => {
+    // Get results from localStorage
+    const savedResults = localStorage.getItem('analysisResults');
+    if (savedResults) {
+      const parsedResults = JSON.parse(savedResults);
+      console.log("Dashboard loaded results:", parsedResults);
+      
+      // Check if raw_response exists
+      if (parsedResults.deepseek_analysis && parsedResults.deepseek_analysis.raw_response) {
+        console.log("Raw response exists with length:", parsedResults.deepseek_analysis.raw_response.length);
+      } else {
+        console.warn("Raw response is missing from results!");
+      }
+      
+      setResults(parsedResults);
+    }
+    setLoading(false);
+  }, []);
+  
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [severityFilter, typeFilter, searchTerm]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col justify-center items-center min-h-screen bg-gray-900">
+        <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500 mb-4"></div>
+        <div className="w-64">
+          <LoadingAnimation />
+        </div>
+      </div>
+    );
+  }
+
+  if (!results) {
+    return (
+      <div className="container mx-auto px-4 py-8 text-center">
+        <h1 className="text-3xl font-bold mb-6">No Analysis Results Found</h1>
+        <p className="mb-6">No analysis results were found. Please analyze a log file first.</p>
+        <Link 
+          href="/"
+          className="px-6 py-3 bg-blue-600 text-white rounded-md shadow-md hover:bg-blue-700 transition-all"
+        >
+          Return to Home
+        </Link>
+      </div>
+    );
+  }
+
+  // Get all findings
+  const allFindings = [
+    ...results.basic_findings,
+    ...results.deepseek_analysis.confirmed_findings,
+    ...results.deepseek_analysis.new_findings
+  ];
+
+  // Count by severity
+  const severityCounts = {
+    high: allFindings.filter(f => f.severity === 'high').length,
+    medium: allFindings.filter(f => f.severity === 'medium').length,
+    low: allFindings.filter(f => f.severity === 'low' || !f.severity).length
+  };
+  
+  // Filter findings based on selected filters
+  const filteredFindings = allFindings.filter(finding => {
+    // Filter by severity
+    if (severityFilter !== 'all') {
+      if (severityFilter === 'high' && finding.severity !== 'high') return false;
+      if (severityFilter === 'medium' && finding.severity !== 'medium') return false;
+      if (severityFilter === 'low' && (finding.severity !== 'low' && finding.severity !== undefined)) return false;
+    }
+    
+    // Filter by vulnerability type
+    if (typeFilter !== 'all') {
+      if (!finding.vulnerability_id.includes(typeFilter.toUpperCase())) return false;
+    }
+    
+    // Filter by search term
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      return (
+        (finding.description && finding.description.toLowerCase().includes(searchLower)) ||
+        (finding.vulnerability_id && finding.vulnerability_id.toLowerCase().includes(searchLower)) ||
+        (finding.line_content && finding.line_content.toLowerCase().includes(searchLower))
+      );
+    }
+    
+    return true;
+  });
+  
+  // Get unique vulnerability types for the filter dropdown
+  const vulnerabilityTypes = Array.from(new Set(allFindings.map(f => {
+    // Extract the type portion before the dash and number
+    const match = f.vulnerability_id.match(/^([A-Z-]+)/);
+    return match ? match[0].toLowerCase() : '';
+  }))).filter(Boolean);
+  
+  // Paginate findings
+  const totalPages = Math.ceil(filteredFindings.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedFindings = filteredFindings.slice(startIndex, startIndex + itemsPerPage);
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-gray-100 py-8">
+      <div className="container mx-auto px-4">
+        <div className="flex justify-between items-center mb-8 border-b border-gray-700 pb-4">
+          <h1 className="text-3xl font-bold text-blue-400">Security Analysis Results</h1>
+          <Link 
+            href="/"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-all"
+          >
+            Analyze Another File
+          </Link>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+            <h3 className="font-semibold text-blue-400 mb-2">Total Findings</h3>
+            <p className="text-4xl font-bold text-white">{allFindings.length}</p>
+          </div>
+          <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+            <h3 className="font-semibold text-red-400 mb-2">High Severity</h3>
+            <p className="text-4xl font-bold text-red-500">{severityCounts.high}</p>
+          </div>
+          <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+            <h3 className="font-semibold text-yellow-300 mb-2">Medium Severity</h3>
+            <p className="text-4xl font-bold text-yellow-400">{severityCounts.medium}</p>
+          </div>
+          <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700">
+            <h3 className="font-semibold text-green-400 mb-2">Low Severity</h3>
+            <p className="text-4xl font-bold text-green-500">{severityCounts.low}</p>
+          </div>
+        </div>
+
+        {/* Log Summary */}
+        <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 mb-8">
+          <h2 className="text-xl font-semibold mb-4 text-blue-400 border-b border-gray-700 pb-2">Log Analysis Summary</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <p className="mb-2"><span className="font-medium text-gray-300">Total Lines:</span> <span className="text-white">{results.log_summary.total_lines}</span></p>
+              <p className="mb-2"><span className="font-medium text-gray-300">Analysis Date:</span> <span className="text-white">{new Date(results.log_summary.analysis_timestamp).toLocaleString()}</span></p>
+              {results.log_summary.request_timestamp && (
+                <p className="mb-2"><span className="font-medium text-gray-300">Request Time:</span> <span className="text-white">{new Date(results.log_summary.request_timestamp).toLocaleString()}</span></p>
+              )}
+            </div>
+            <div>
+              {results.log_summary.log_format && (
+                <p className="mb-2"><span className="font-medium text-gray-300">Log Format:</span> <span className="text-white">{results.log_summary.log_format}</span></p>
+              )}
+              <p className="mb-2">
+                <span className="font-medium text-gray-300">Threat Level:</span> 
+                <span className={`ml-2 px-2 py-1 rounded text-xs ${
+                  severityCounts.high > 0 ? 'bg-red-900 text-red-200' : 
+                  severityCounts.medium > 0 ? 'bg-yellow-900 text-yellow-200' : 
+                  'bg-green-900 text-green-200'
+                }`}>
+                  {severityCounts.high > 0 ? 'HIGH' : severityCounts.medium > 0 ? 'MEDIUM' : 'LOW'}
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Findings Table with Filters */}
+        <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 mb-8">
+          <h2 className="text-xl font-semibold mb-4 text-blue-400 border-b border-gray-700 pb-2">Vulnerabilities Found</h2>
+          
+          {/* Filter Controls */}
+          <div className="mb-4 flex flex-wrap gap-3 items-center">
+            <div className="flex items-center">
+              <label className="mr-2 text-gray-300">Severity:</label>
+              <select 
+                value={severityFilter}
+                onChange={(e) => setSeverityFilter(e.target.value)}
+                className="bg-gray-700 border border-gray-600 text-white rounded-md px-3 py-1 text-sm"
+              >
+                <option value="all">All</option>
+                <option value="high">High Only</option>
+                <option value="medium">Medium Only</option>
+                <option value="low">Low Only</option>
+              </select>
+            </div>
+            
+            <div className="flex items-center">
+              <label className="mr-2 text-gray-300">Type:</label>
+              <select 
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="bg-gray-700 border border-gray-600 text-white rounded-md px-3 py-1 text-sm"
+              >
+                <option value="all">All Types</option>
+                {vulnerabilityTypes.map(type => (
+                  <option key={type} value={type}>{type.toUpperCase()}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="flex items-center flex-grow">
+              <input
+                type="text"
+                placeholder="Search for keywords..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="bg-gray-700 border border-gray-600 text-white rounded-md px-3 py-1 text-sm w-full"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="ml-2 text-gray-400 hover:text-white"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            
+            <div className="flex items-center">
+              <label className="mr-2 text-gray-300">Per page:</label>
+              <select 
+                value={itemsPerPage}
+                onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                className="bg-gray-700 border border-gray-600 text-white rounded-md px-3 py-1 text-sm"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </div>
+          
+          {/* Results Count */}
+          <div className="mb-3 text-sm text-gray-400">
+            Showing {filteredFindings.length ? `${startIndex + 1}-${Math.min(startIndex + itemsPerPage, filteredFindings.length)} of ` : ''}{filteredFindings.length} results
+            {(severityFilter !== 'all' || typeFilter !== 'all' || searchTerm) && (
+              <button 
+                onClick={() => {
+                  setSeverityFilter('all');
+                  setTypeFilter('all');
+                  setSearchTerm('');
+                }}
+                className="ml-3 text-blue-400 hover:underline"
+              >
+                Clear all filters
+              </button>
+            )}
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="min-w-full bg-transparent">
+              <thead>
+                <tr className="bg-gray-700 text-gray-200">
+                  <th className="py-3 px-4 text-left border-b border-gray-600">ID</th>
+                  <th className="py-3 px-4 text-left border-b border-gray-600">Description</th>
+                  <th className="py-3 px-4 text-left border-b border-gray-600">Line</th>
+                  <th className="py-3 px-4 text-left border-b border-gray-600">Content</th>
+                  <th className="py-3 px-4 text-left border-b border-gray-600">Severity</th>
+                  <th className="py-3 px-4 text-left border-b border-gray-600">Confidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedFindings.map((finding, index) => {
+                  // Format the line content with highlighting if we have it
+                  let formattedContent = <span className="text-gray-300">N/A</span>;
+                  
+                  if (finding.line_content) {
+                    if (finding.match_position) {
+                      // Highlight the vulnerable part
+                      const { start, end } = finding.match_position;
+                      const beforeMatch = finding.line_content.substring(0, start);
+                      const matchedPart = finding.line_content.substring(start, end);
+                      const afterMatch = finding.line_content.substring(end);
+                      
+                      formattedContent = (
+                        <span>
+                          <span className="text-gray-300">{beforeMatch}</span>
+                          <span className="bg-red-900 text-white px-1 rounded">{matchedPart}</span>
+                          <span className="text-gray-300">{afterMatch}</span>
+                        </span>
+                      );
+                    } else {
+                      // Do basic pattern highlighting based on vulnerability ID
+                      const content = finding.line_content;
+                      let highlightedContent = content;
+                      
+                      // Attempt to highlight based on common patterns
+                      if (finding.vulnerability_id.includes('SQL')) {
+                        // Highlight SQL keywords
+                        highlightedContent = content.replace(
+                          /(select|union|insert|update|delete|from|where|1=1|\bor\b|')/gi,
+                          '<span class="bg-red-900 text-white px-1 rounded">$1</span>'
+                        );
+                      } else if (finding.vulnerability_id.includes('PATH') || finding.vulnerability_id.includes('FILE')) {
+                        // Highlight path traversal
+                        highlightedContent = content.replace(
+                          /(\.\.\/|\.\.\\|\.\.\%2f|\/etc\/passwd)/gi,
+                          '<span class="bg-red-900 text-white px-1 rounded">$1</span>'
+                        );
+                      } else if (finding.vulnerability_id.includes('XSS')) {
+                        // Highlight XSS
+                        highlightedContent = content.replace(
+                          /(<script>|javascript:|alert\(|on\w+\s*=)/gi,
+                          '<span class="bg-red-900 text-white px-1 rounded">$1</span>'
+                        );
+                      }
+                      
+                      formattedContent = (
+                        <span dangerouslySetInnerHTML={{__html: highlightedContent}} />
+                      );
+                    }
+                  }
+                  
+                  return (
+                    <tr key={index} className="border-b border-gray-700 hover:bg-gray-700">
+                      <td className="py-3 px-4">
+                        <button 
+                          onClick={() => {
+                            setSelectedVulnerability(finding.vulnerability_id);
+                            setDetailsModalOpen(true);
+                          }}
+                          className="text-blue-300 hover:text-blue-400 hover:underline flex items-center"
+                        >
+                          {finding.vulnerability_id}
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      </td>
+                      <td className="py-3 px-4 text-gray-200">{finding.description}</td>
+                      <td className="py-3 px-4 text-gray-300">{finding.line_number}</td>
+                      <td className="py-3 px-4 max-w-md overflow-x-auto">{formattedContent}</td>
+                      <td className="py-3 px-4">
+                        <span className={`px-2 py-1 rounded text-xs ${
+                          finding.severity === 'high' ? 'bg-red-900 text-red-200' :
+                          finding.severity === 'medium' ? 'bg-yellow-900 text-yellow-200' :
+                          'bg-green-900 text-green-200'
+                        }`}>
+                          {finding.severity || 'low'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-gray-300">{finding.confidence}</td>
+                    </tr>
+                  );
+                })}
+                
+                {filteredFindings.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-gray-400">
+                      No results found matching your filters.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="mt-4 flex justify-between items-center">
+              <div className="text-sm text-gray-400">
+                Page {currentPage} of {totalPages}
+              </div>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className={`px-3 py-1 rounded ${
+                    currentPage === 1 
+                      ? 'bg-gray-700 text-gray-500 cursor-not-allowed' 
+                      : 'bg-blue-700 text-white hover:bg-blue-600'
+                  }`}
+                >
+                  Previous
+                </button>
+                
+                {/* Page number buttons */}
+                <div className="flex space-x-1">
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    // Show at most 5 page buttons
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-8 h-8 flex items-center justify-center rounded ${
+                          currentPage === pageNum
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+                
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className={`px-3 py-1 rounded ${
+                    currentPage === totalPages 
+                      ? 'bg-gray-700 text-gray-500 cursor-not-allowed' 
+                      : 'bg-blue-700 text-white hover:bg-blue-600'
+                  }`}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Recommendations */}
+        <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 mb-8">
+          <h2 className="text-xl font-semibold mb-4 text-blue-400 border-b border-gray-700 pb-2">Security Recommendations</h2>
+          <ul className="space-y-4">
+            {results.deepseek_analysis.recommendations.map((rec, index) => (
+              <li key={index} className={`p-4 rounded-md border ${
+                rec.priority === 'high' ? 'border-red-700 bg-gray-900' :
+                rec.priority === 'medium' ? 'border-yellow-700 bg-gray-900' :
+                'border-green-700 bg-gray-900'
+              }`}>
+                <div className="flex items-start">
+                  <div className={`mt-1 mr-3 flex-shrink-0 w-3 h-3 rounded-full ${
+                    rec.priority === 'high' ? 'bg-red-500' :
+                    rec.priority === 'medium' ? 'bg-yellow-500' :
+                    'bg-green-500'
+                  }`}></div>
+                  <div>
+                    <h4 className={`font-bold mb-1 ${
+                      rec.priority === 'high' ? 'text-red-400' :
+                      rec.priority === 'medium' ? 'text-yellow-300' :
+                      'text-green-400'
+                    }`}>
+                      {rec.priority.toUpperCase()} PRIORITY
+                    </h4>
+                    <p className="text-gray-200">{rec.action}</p>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Reasoning Steps with Filter */}
+        <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 mb-8">
+          <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+            <h2 className="text-xl font-semibold text-blue-400">Detailed Analysis Reasoning</h2>
+            
+            {/* Simple toggle to expand/collapse all reasoning */}
+            <div className="flex items-center">
+              <label className="text-gray-300 mr-3 text-sm">Show:</label>
+              <select 
+                className="bg-gray-700 border border-gray-600 text-white rounded-md px-3 py-1 text-sm"
+                onChange={(e) => {
+                  // This would typically set a state variable to control which reasoning steps to show
+                  // For now, it's just a UI element
+                }}
+              >
+                <option value="all">All Steps</option>
+                <option value="confirmations">Confirmations Only</option>
+                <option value="vulnerabilities">New Vulnerabilities Only</option>
+                <option value="summary">Summary Only</option>
+              </select>
+            </div>
+          </div>
+          
+          <div className="space-y-6">
+            {/* Show all reasoning steps or just the first few depending on toggle state */}
+            {(expandedReasonings.has('show-all-steps') 
+              ? results.deepseek_analysis.reasoning 
+              : results.deepseek_analysis.reasoning.slice(0, 3)
+            ).map((step, index) => {
+              // Find any findings associated with this reasoning step
+              const relatedFindings = allFindings.filter(finding => finding.reasoning_id === step.id);
+              
+              return (
+                <div key={index} className="p-5 bg-gray-900 rounded-md border border-gray-700">
+                  <div className="flex items-center mb-3">
+                    <div className="w-8 h-8 rounded-full bg-blue-900 flex items-center justify-center mr-3 text-blue-300 font-bold">
+                      {index + 1}
+                    </div>
+                    <div className="flex flex-col">
+                      <h4 className="text-lg font-bold text-blue-300">{step.type.charAt(0).toUpperCase() + step.type.slice(1)}</h4>
+                      <p className="text-xs text-gray-400">Step ID: {step.id}</p>
+                    </div>
+                    
+                    {/* Badge showing number of related findings */}
+                    {relatedFindings.length > 0 && (
+                      <div className="ml-auto">
+                        <span className="bg-blue-800 text-blue-200 text-xs px-2 py-1 rounded-full">
+                          {relatedFindings.length} Finding{relatedFindings.length > 1 ? 's' : ''}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="ml-11">
+                    <div className="mb-3 text-gray-200 whitespace-pre-wrap">
+                      {/* Truncate long content with "Read more" button */}
+                      {step.content.length > 150 && !expandedReasonings.has(step.id)
+                        ? <>
+                            {step.content.substring(0, 150)}...
+                            <button 
+                              onClick={() => setExpandedReasonings(prev => new Set([...prev, step.id]))}
+                              className="ml-2 text-blue-400 hover:underline text-sm"
+                            >
+                              Read more
+                            </button>
+                          </>
+                        : <>
+                            {step.content}
+                            {expandedReasonings.has(step.id) && step.content.length > 150 && (
+                              <button 
+                                onClick={() => setExpandedReasonings(prev => {
+                                  const newSet = new Set([...prev]);
+                                  newSet.delete(step.id);
+                                  return newSet;
+                                })}
+                                className="ml-2 text-blue-400 hover:underline text-sm"
+                              >
+                                Show less
+                              </button>
+                            )}
+                          </>
+                      }
+                    </div>
+                    
+                    {/* Display related findings */}
+                    {relatedFindings.length > 0 && (
+                      <div className="mb-4 mt-3 border-l-4 border-blue-700 pl-4 py-2">
+                        <div className="flex justify-between items-center mb-2">
+                          <h5 className="text-sm font-semibold text-blue-300">Related Vulnerabilities:</h5>
+                          
+                          {/* Show toggle button for related findings */}
+                          {relatedFindings.length > 2 && (
+                            <button 
+                              onClick={() => {
+                                if (expandedReasonings.has(`${step.id}-findings`)) {
+                                  setExpandedReasonings(prev => {
+                                    const newSet = new Set([...prev]);
+                                    newSet.delete(`${step.id}-findings`);
+                                    return newSet;
+                                  });
+                                } else {
+                                  setExpandedReasonings(prev => new Set([...prev, `${step.id}-findings`]));
+                                }
+                              }} 
+                              className="text-blue-400 hover:underline text-xs"
+                            >
+                              {expandedReasonings.has(`${step.id}-findings`) 
+                                ? "Show fewer" 
+                                : `Show all ${relatedFindings.length}`}
+                            </button>
+                          )}
+                        </div>
+                        
+                        <ul className="space-y-2">
+                          {(expandedReasonings.has(`${step.id}-findings`) 
+                            ? relatedFindings 
+                            : relatedFindings.slice(0, 2)
+                          ).map((finding, idx) => (
+                            <li key={idx} className="flex flex-col">
+                              <div className="flex items-center">
+                                <span className="text-blue-300 mr-2">{finding.vulnerability_id}:</span>
+                                <span className="text-gray-200">{finding.description}</span>
+                                <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
+                                  finding.severity === 'high' ? 'bg-red-900 text-red-200' :
+                                  finding.severity === 'medium' ? 'bg-yellow-900 text-yellow-200' :
+                                  'bg-green-900 text-green-200'
+                                }`}>
+                                  {finding.severity || 'low'}
+                                </span>
+                              </div>
+                              
+                              {finding.line_content && (
+                                <div className="text-xs mt-1 pl-4 border-l border-gray-600 py-1">
+                                  <span className="text-gray-400">Line {finding.line_number}: </span>
+                                  <code className="text-gray-300 bg-gray-800 p-1 rounded">
+                                    {finding.line_content}
+                                  </code>
+                                </div>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {/* Advanced evaluation section - toggleable */}
+                    {step.evaluation && (
+                      <div className="mt-3">
+                        {expandedReasonings.has(`${step.id}-eval`) ? (
+                          <>
+                            <div className="whitespace-pre-wrap text-gray-300 text-sm bg-gray-800 p-4 rounded border border-gray-700 mb-2">
+                              {step.evaluation}
+                            </div>
+                            <button 
+                              onClick={() => setExpandedReasonings(prev => {
+                                const newSet = new Set([...prev]);
+                                newSet.delete(`${step.id}-eval`);
+                                return newSet;
+                              })}
+                              className="text-blue-400 hover:underline text-sm flex items-center"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                              Hide detailed evaluation
+                            </button>
+                          </>
+                        ) : (
+                          <button 
+                            onClick={() => setExpandedReasonings(prev => new Set([...prev, `${step.id}-eval`]))}
+                            className="text-blue-400 hover:underline text-sm flex items-center"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                            Show detailed evaluation
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    
+                    {step.conclusion && (
+                      <div className="mt-3 p-2 rounded bg-gray-800 border-l-4 border-r-4 px-3 flex justify-between items-center">
+                        <span className="text-gray-300">Conclusion:</span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          step.conclusion === 'confirmed' ? 'bg-red-900 text-red-200' :
+                          step.conclusion === 'new_vulnerability' ? 'bg-orange-900 text-orange-200' :
+                          step.conclusion === 'rejected' ? 'bg-green-900 text-green-200' :
+                          'bg-blue-900 text-blue-200'
+                        }`}>
+                          {step.conclusion.toUpperCase().replace('_', ' ')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            
+            {/* Show button to toggle more reasoning steps */}
+            {results.deepseek_analysis.reasoning.length > 3 && (
+              <div className="text-center mt-4">
+                {expandedReasonings.has('show-all-steps') ? (
+                  <button 
+                    onClick={() => setExpandedReasonings(prev => {
+                      const newSet = new Set([...prev]);
+                      newSet.delete('show-all-steps');
+                      return newSet;
+                    })}
+                    className="px-4 py-2 bg-gray-700 text-gray-200 rounded-md hover:bg-gray-600 transition-all"
+                  >
+                    Show Fewer Analysis Steps
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => setExpandedReasonings(prev => new Set([...prev, 'show-all-steps']))}
+                    className="px-4 py-2 bg-gray-700 text-gray-200 rounded-md hover:bg-gray-600 transition-all"
+                  >
+                    Show {results.deepseek_analysis.reasoning.length - 3} More Analysis Steps
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+      </div>
+      
+      {/* Vulnerability Details Modal */}
+      {detailsModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg shadow-lg border border-gray-700 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center p-6 border-b border-gray-700">
+              <h3 className="text-xl font-bold text-blue-400">
+                Vulnerability Details: {selectedVulnerability}
+              </h3>
+              <button 
+                onClick={() => setDetailsModalOpen(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-grow">
+              {selectedVulnerability && (() => {
+                // Find the selected vulnerability
+                const selectedFinding = allFindings.find(f => f.vulnerability_id === selectedVulnerability);
+                
+                // Find the reasoning step related to this vulnerability
+                const relatedReasoning = selectedFinding?.reasoning_id ? 
+                  results.deepseek_analysis.reasoning.find(step => step.id === selectedFinding.reasoning_id) : 
+                  null;
+                
+                // Find other vulnerabilities with the same reasoning
+                const relatedVulnerabilities = selectedFinding?.reasoning_id ? 
+                  allFindings.filter(f => f.reasoning_id === selectedFinding.reasoning_id && f.vulnerability_id !== selectedVulnerability) : 
+                  [];
+                
+                return (
+                  <>
+                    {selectedFinding ? (
+                      <div className="space-y-6">
+                        {/* Vulnerability Summary */}
+                        <div className="bg-gray-900 p-5 rounded-md border border-gray-700">
+                          <h4 className="text-lg font-semibold text-blue-400 mb-3">Vulnerability Summary</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <p className="mb-2">
+                                <span className="text-gray-400 font-medium">ID:</span>{" "}
+                                <span className="text-blue-300">{selectedFinding.vulnerability_id}</span>
+                              </p>
+                              <p className="mb-2">
+                                <span className="text-gray-400 font-medium">Description:</span>{" "}
+                                <span className="text-white">{selectedFinding.description}</span>
+                              </p>
+                              <p className="mb-2">
+                                <span className="text-gray-400 font-medium">Found at line:</span>{" "}
+                                <span className="text-white">{selectedFinding.line_number}</span>
+                              </p>
+                            </div>
+                            <div>
+                              <p className="mb-2">
+                                <span className="text-gray-400 font-medium">Severity:</span>{" "}
+                                <span className={`px-2 py-0.5 rounded ${
+                                  selectedFinding.severity === 'high' ? 'bg-red-900 text-red-200' :
+                                  selectedFinding.severity === 'medium' ? 'bg-yellow-900 text-yellow-200' :
+                                  'bg-green-900 text-green-200'
+                                }`}>
+                                  {selectedFinding.severity || 'low'}
+                                </span>
+                              </p>
+                              <p className="mb-2">
+                                <span className="text-gray-400 font-medium">Confidence:</span>{" "}
+                                <span className="text-white">{selectedFinding.confidence}</span>
+                              </p>
+                              <p className="mb-2">
+                                <span className="text-gray-400 font-medium">Analysis ID:</span>{" "}
+                                <span className="text-white">{selectedFinding.reasoning_id || 'N/A'}</span>
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Log Line Analysis */}
+                        {selectedFinding.line_content && (
+                          <div className="bg-gray-900 p-5 rounded-md border border-gray-700">
+                            <h4 className="text-lg font-semibold text-blue-400 mb-3">Log Line Analysis</h4>
+                            <div className="mb-3">
+                              <p className="text-sm text-gray-400 mb-1">Full log line:</p>
+                              <div className="bg-gray-800 p-3 rounded font-mono text-gray-200 border border-gray-700 overflow-x-auto">
+                                {selectedFinding.line_content}
+                              </div>
+                            </div>
+                            
+                            {selectedFinding.match_position && (
+                              <div>
+                                <p className="text-sm text-gray-400 mb-1">Vulnerable portion:</p>
+                                <div className="bg-gray-800 p-3 rounded font-mono border border-gray-700 overflow-x-auto">
+                                  {(() => {
+                                    const { start, end } = selectedFinding.match_position;
+                                    const beforeMatch = selectedFinding.line_content.substring(0, start);
+                                    const matchedPart = selectedFinding.line_content.substring(start, end);
+                                    const afterMatch = selectedFinding.line_content.substring(end);
+                                    
+                                    return (
+                                      <>
+                                        <span className="text-gray-400">{beforeMatch}</span>
+                                        <span className="bg-red-900 text-white px-1 rounded">{matchedPart}</span>
+                                        <span className="text-gray-400">{afterMatch}</span>
+                                      </>
+                                    );
+                                  })()}
+                                </div>
+                                <p className="text-sm text-gray-400 mt-2">
+                                  Matched position: Characters {selectedFinding.match_position.start} to {selectedFinding.match_position.end}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* AI Reasoning */}
+                        {relatedReasoning && (
+                          <div className="bg-gray-900 p-5 rounded-md border border-gray-700">
+                            <h4 className="text-lg font-semibold text-blue-400 mb-3">AI Analysis Reasoning</h4>
+                            <p className="text-sm text-gray-400 mb-2">
+                              Analysis type: <span className="font-medium text-white">{relatedReasoning.type}</span>
+                            </p>
+                            <div className="whitespace-pre-wrap text-gray-200 mb-4 bg-gray-800 p-4 rounded border border-gray-700">
+                              {relatedReasoning.content}
+                            </div>
+                            
+                            {relatedReasoning.evaluation && (
+                              <div className="mt-4">
+                                <p className="text-sm font-medium text-gray-300 mb-2">Detailed Evaluation:</p>
+                                <div className="whitespace-pre-wrap text-gray-300 text-sm bg-gray-800 p-4 rounded border border-gray-700">
+                                  {relatedReasoning.evaluation}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {relatedReasoning.conclusion && (
+                              <div className="mt-4 flex items-center">
+                                <span className="text-gray-300 mr-3">Conclusion:</span>
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                                  relatedReasoning.conclusion === 'confirmed' ? 'bg-red-900 text-red-200' :
+                                  relatedReasoning.conclusion === 'new_vulnerability' ? 'bg-orange-900 text-orange-200' :
+                                  relatedReasoning.conclusion === 'rejected' ? 'bg-green-900 text-green-200' :
+                                  'bg-blue-900 text-blue-200'
+                                }`}>
+                                  {relatedReasoning.conclusion.toUpperCase().replace('_', ' ')}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {/* Related Vulnerabilities */}
+                        {relatedVulnerabilities.length > 0 && (
+                          <div className="bg-gray-900 p-5 rounded-md border border-gray-700">
+                            <h4 className="text-lg font-semibold text-blue-400 mb-3">Related Vulnerabilities</h4>
+                            <p className="text-sm text-gray-400 mb-3">
+                              These vulnerabilities were identified as part of the same analysis:
+                            </p>
+                            <ul className="space-y-2">
+                              {relatedVulnerabilities.map((vuln, i) => (
+                                <li key={i} className="flex items-center justify-between bg-gray-800 p-3 rounded border border-gray-700">
+                                  <div>
+                                    <span className="text-blue-300 mr-2">{vuln.vulnerability_id}:</span>
+                                    <span className="text-gray-200">{vuln.description}</span>
+                                  </div>
+                                  <button
+                                    onClick={() => setSelectedVulnerability(vuln.vulnerability_id)}
+                                    className="text-blue-400 hover:underline text-sm"
+                                  >
+                                    View details
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        
+                        {/* MITRE ATT&CK / CWE Info (optional) */}
+                        <div className="bg-gray-900 p-5 rounded-md border border-gray-700">
+                          <h4 className="text-lg font-semibold text-blue-400 mb-3">Vulnerability Reference Information</h4>
+                          
+                          <div className="mb-4">
+                            <h5 className="text-sm font-medium text-gray-300 mb-2">Potential CWE Classification:</h5>
+                            {(() => {
+                              let cweInfo = null;
+                              if (selectedFinding.vulnerability_id.includes('SQL')) {
+                                cweInfo = {
+                                  id: 'CWE-89',
+                                  name: 'SQL Injection',
+                                  link: 'https://cwe.mitre.org/data/definitions/89.html',
+                                  description: 'Improper Neutralization of Special Elements used in an SQL Command'
+                                };
+                              } else if (selectedFinding.vulnerability_id.includes('XSS')) {
+                                cweInfo = {
+                                  id: 'CWE-79',
+                                  name: 'Cross-site Scripting (XSS)',
+                                  link: 'https://cwe.mitre.org/data/definitions/79.html',
+                                  description: 'Improper Neutralization of Input During Web Page Generation'
+                                };
+                              } else if (selectedFinding.vulnerability_id.includes('PATH') || selectedFinding.vulnerability_id.includes('FILE')) {
+                                cweInfo = {
+                                  id: 'CWE-22',
+                                  name: 'Path Traversal',
+                                  link: 'https://cwe.mitre.org/data/definitions/22.html',
+                                  description: 'Improper Limitation of a Pathname to a Restricted Directory'
+                                };
+                              } else if (selectedFinding.vulnerability_id.includes('COMMAND')) {
+                                cweInfo = {
+                                  id: 'CWE-77',
+                                  name: 'Command Injection',
+                                  link: 'https://cwe.mitre.org/data/definitions/77.html',
+                                  description: 'Improper Neutralization of Special Elements used in a Command'
+                                };
+                              } else if (selectedFinding.vulnerability_id.includes('DDOS')) {
+                                cweInfo = {
+                                  id: 'CWE-400',
+                                  name: 'Uncontrolled Resource Consumption',
+                                  link: 'https://cwe.mitre.org/data/definitions/400.html',
+                                  description: 'Uncontrolled Resource Consumption (Resource Exhaustion)'
+                                };
+                              }
+                              
+                              return cweInfo ? (
+                                <div className="bg-gray-800 p-3 rounded border border-gray-700">
+                                  <p className="mb-2">
+                                    <span className="text-blue-300 font-medium">{cweInfo.id}:</span> {cweInfo.name}
+                                  </p>
+                                  <p className="text-sm text-gray-300 mb-2">{cweInfo.description}</p>
+                                  <a 
+                                    href={cweInfo.link} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-blue-400 hover:underline text-sm"
+                                  >
+                                    View CWE reference
+                                  </a>
+                                </div>
+                              ) : (
+                                <p className="text-gray-400">No specific CWE mapping available for this vulnerability type.</p>
+                              );
+                            })()}
+                          </div>
+                          
+                          <div>
+                            <h5 className="text-sm font-medium text-gray-300 mb-2">Recommended Mitigation:</h5>
+                            <div className="bg-gray-800 p-3 rounded border border-gray-700">
+                              {(() => {
+                                if (selectedFinding.vulnerability_id.includes('SQL')) {
+                                  return <p className="text-gray-200">Use parameterized queries or prepared statements instead of dynamically building SQL strings. Implement proper input validation and apply the principle of least privilege for database accounts.</p>;
+                                } else if (selectedFinding.vulnerability_id.includes('XSS')) {
+                                  return <p className="text-gray-200">Implement proper input validation, context-aware output encoding, and Content Security Policy (CSP) headers. Consider using modern frameworks that automatically escape output.</p>;
+                                } else if (selectedFinding.vulnerability_id.includes('PATH') || selectedFinding.vulnerability_id.includes('FILE')) {
+                                  return <p className="text-gray-200">Validate and sanitize all user inputs, use a whitelist approach for file access, and avoid placing user-controllable data directly into filesystem operations.</p>;
+                                } else if (selectedFinding.vulnerability_id.includes('COMMAND')) {
+                                  return <p className="text-gray-200">Avoid using shell commands where possible, use safer APIs instead. If shell commands are necessary, implement strict input validation and consider using allowlists of permitted commands.</p>;
+                                } else if (selectedFinding.vulnerability_id.includes('DDOS')) {
+                                  return <p className="text-gray-200">Implement rate limiting, use CDN services, ensure proper resource allocation, and consider implementing challenge-response mechanisms for suspicious requests.</p>;
+                                } else {
+                                  return <p className="text-gray-200">Implement proper input validation, follow the principle of least privilege, and ensure that all error messages don't leak sensitive information.</p>;
+                                }
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-400">
+                        <p>Vulnerability information not found.</p>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+            
+            <div className="border-t border-gray-700 p-4 flex justify-end">
+              <button
+                onClick={() => setDetailsModalOpen(false)}
+                className="px-4 py-2 bg-gray-700 text-white rounded hover:bg-gray-600"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
