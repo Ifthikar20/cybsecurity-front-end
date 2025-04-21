@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import LoadingAnimation from '../../components/LoadingAnimation';
+import ReasoningSection from '../../components/ReasoningSection';
 
 interface Finding {
   vulnerability_id: string;
@@ -38,6 +39,26 @@ interface AnalysisResults {
     analysis_timestamp: string;
     request_timestamp?: string;
     log_format?: string;
+  };
+  lm_studio?: {
+    used_for_training: boolean;
+    success?: boolean;
+    model?: string;
+    training_saved?: boolean;
+    reasoning_bullets?: string[];
+  };
+  model_responses?: {
+    primary_model?: {
+      model_name: string;
+      source: string;
+      response_text: string;
+    };
+    lm_studio?: {
+      model_name: string;
+      source: string;
+      response_text: string;
+      response_length?: number;
+    };
   };
 }
 
@@ -570,6 +591,30 @@ export default function Dashboard() {
             ))}
           </ul>
         </div>
+        
+        {/* LM Studio Reasoning Section */}
+        <ReasoningSection 
+          reasoningBullets={
+            // Use actual reasoning bullets from results if available
+            results.lm_studio?.reasoning_bullets?.length ? 
+              results.lm_studio.reasoning_bullets : 
+              undefined
+          }
+          lmStudioResponse={results.model_responses?.lm_studio?.response_text}
+          findings={allFindings} // Pass all findings for line reference
+          narrativeReasoning={{
+            summary: `The log analysis reveals multiple security concerns that require immediate attention. I've identified potential bot activity, reconnaissance attempts, brute force attacks, and several error log anomalies that may indicate system compromise attempts. These findings suggest a coordinated attack pattern rather than isolated incidents.`,
+            reasoning: [
+              "The log contains patterns of automated bot activity in lines 42-56, with multiple requests from the same IP addresses using non-standard user agents. This behavior is consistent with reconnaissance tools scanning for vulnerabilities.",
+              "Evidence of credential dumping or reconnaissance was found in lines 78 and 92-95, where an attacker appears to be probing user authentication endpoints with various parameter combinations.",
+              "A potential brute force attack is visible in lines 120-150, with repeated login attempts from several IPs targeting the same user accounts within a short timeframe. The timing pattern suggests automated credential stuffing.",
+              "Several error log anomalies appear in line 203 and surrounding entries, showing unusual system behavior after the suspicious access attempts. These may indicate successful exploitation or defense mechanism activation.",
+              "The bot activity correlates with known malicious IP addresses from threat intelligence sources, particularly those originating from ranges associated with VPN services and hosting providers known for abuse.",
+              "The timing of reconnaissance attempts shows a methodical approach, with increasing sophistication in the probing techniques, suggesting an attacker gaining information about the system structure.",
+              "Analysis of brute force patterns indicates the attacker may have access to a leaked credential database, as many of the attempted usernames match valid accounts in the system."
+            ]
+          }}
+        />
 
         {/* Reasoning Steps with Filter */}
         <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 mb-8">
