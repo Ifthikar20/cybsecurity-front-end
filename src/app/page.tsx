@@ -138,11 +138,7 @@ export default function Home() {
   return (
     <div className="flex flex-col min-h-screen bg-gray-900 text-gray-100">
       {/* Header */}
-      <header className="bg-gray-800 shadow-md">
-        <div className="container mx-auto px-4 py-3">
-          <h1 className="text-xl font-bold">Log File Vulnerability Analyzer</h1>
-        </div>
-      </header>
+     
 
       {/* Loading animation overlay */}
       {isLoading && (

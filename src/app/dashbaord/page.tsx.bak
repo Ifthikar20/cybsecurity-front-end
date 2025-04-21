@@ -163,62 +163,6 @@ export default function Dashboard() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedFindings = filteredFindings.slice(startIndex, startIndex + itemsPerPage);
 
-  // Format evaluation text into bullet points
-  const formatEvaluation = (evaluationText: string) => {
-    let evaluationPoints: string[] = [];
-    
-    // Try to split by sentences
-    if (evaluationText.includes('. ')) {
-      evaluationPoints = evaluationText.split('. ')
-        .filter(s => s.trim().length > 0)
-        .map(s => s.trim() + (s.endsWith('.') ? '' : '.'));
-    } else if (evaluationText.length > 100) {
-      // If there's a long single sentence, try to break it up
-      const parts = evaluationText.split(/,|\band\b|\bor\b|\bbut\b|\bhowever\b|\bmoreover\b|\btherefore\b/gi);
-      evaluationPoints = parts
-        .filter(p => p.trim().length > 0)
-        .map(p => p.trim());
-    } else {
-      // Just use as a single point if it's short
-      evaluationPoints = [evaluationText];
-    }
-    
-    // If we couldn't split it into multiple points, try another approach
-    if (evaluationPoints.length <= 1 && evaluationText.length > 120) {
-      // Split by character count to create multiple lines
-      evaluationPoints = [];
-      let remaining = evaluationText;
-      while (remaining.length > 0) {
-        const splitPoint = Math.min(120, remaining.length);
-        let actualSplitPoint = splitPoint;
-        
-        // Try to find a good break point (space)
-        if (splitPoint < remaining.length) {
-          const spaceIndex = remaining.lastIndexOf(' ', splitPoint);
-          if (spaceIndex > splitPoint / 2) {
-            actualSplitPoint = spaceIndex;
-          }
-        }
-        
-        evaluationPoints.push(remaining.substring(0, actualSplitPoint).trim());
-        remaining = remaining.substring(actualSplitPoint).trim();
-      }
-    }
-    
-    // Render as bullet points if we have multiple points, otherwise as normal text
-    if (evaluationPoints.length > 1) {
-      return (
-        <ul className="list-disc pl-5 space-y-2">
-          {evaluationPoints.map((point, i) => (
-            <li key={i}>{point}</li>
-          ))}
-        </ul>
-      );
-    } else {
-      return <p className="whitespace-pre-wrap">{evaluationText}</p>;
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 py-8">
       <div className="container mx-auto px-4">
@@ -632,21 +576,18 @@ export default function Dashboard() {
           </div>
           
           <div className="space-y-6">
-            {/* Display reasoning steps with filtering */}
+            {/* Display reasoning steps with appropriate filtering */}
             {(() => {
-              // Determine which steps to show
+              // Determine which steps to show based on filters
               let stepsToShow = [...results.deepseek_analysis.reasoning];
               
-              // Apply filters
               if (expandedReasonings.has('filter-by-vuln')) {
-                // Filter by vulnerability ID if active
                 const filterTags = Array.from(expandedReasonings).filter(tag => tag.startsWith('filter-vuln-'));
                 if (filterTags.length > 0) {
                   const reasoningId = filterTags[0].replace('filter-vuln-', '');
                   stepsToShow = stepsToShow.filter(step => step.id === reasoningId);
                 }
               } else if (!expandedReasonings.has('show-all-steps')) {
-                // Show just the first few steps if not showing all and not filtering
                 stepsToShow = stepsToShow.slice(0, 3);
               }
               
@@ -677,9 +618,9 @@ export default function Dashboard() {
                     
                     <div className="ml-11">
                       <div className="mb-3 text-gray-200 whitespace-pre-wrap">
-                        {/* Truncate long content with "Read more" button */}
-                        {step.content.length > 150 && !expandedReasonings.has(step.id) ? (
-                          <>
+                      {/* Truncate long content with "Read more" button */}
+                      {step.content.length > 150 && !expandedReasonings.has(step.id)
+                        ? <>
                             {step.content.substring(0, 150)}...
                             <button 
                               onClick={() => setExpandedReasonings(prev => new Set([...prev, step.id]))}
@@ -688,140 +629,192 @@ export default function Dashboard() {
                               Read more
                             </button>
                           </>
-                        ) : (
-                          <>
+                        : <>
                             {step.content}
                             {expandedReasonings.has(step.id) && step.content.length > 150 && (
                               <button 
-                                onClick={() => {
-                                  setExpandedReasonings(prev => {
-                                    const newSet = new Set([...prev]);
-                                    newSet.delete(step.id);
-                                    return newSet;
-                                  });
-                                }}
+                                onClick={() => setExpandedReasonings(prev => {
+                                  const newSet = new Set([...prev]);
+                                  newSet.delete(step.id);
+                                  return newSet;
+                                })}
                                 className="ml-2 text-blue-400 hover:underline text-sm"
                               >
                                 Show less
                               </button>
                             )}
                           </>
-                        )}
-                      </div>
-                      
-                      {/* Display related findings */}
-                      {relatedFindings.length > 0 && (
-                        <div className="mb-4 mt-3 border-l-4 border-blue-700 pl-4 py-2">
-                          <div className="flex justify-between items-center mb-2">
-                            <h5 className="text-sm font-semibold text-blue-300">Related Vulnerabilities:</h5>
-                            
-                            {/* Show toggle button for related findings */}
-                            {relatedFindings.length > 2 && (
-                              <button 
-                                onClick={() => {
-                                  if (expandedReasonings.has(`${step.id}-findings`)) {
-                                    setExpandedReasonings(prev => {
-                                      const newSet = new Set([...prev]);
-                                      newSet.delete(`${step.id}-findings`);
-                                      return newSet;
-                                    });
-                                  } else {
-                                    setExpandedReasonings(prev => new Set([...prev, `${step.id}-findings`]));
-                                  }
-                                }} 
-                                className="text-blue-400 hover:underline text-xs"
-                              >
-                                {expandedReasonings.has(`${step.id}-findings`) 
-                                  ? "Show fewer" 
-                                  : `Show all ${relatedFindings.length}`}
-                              </button>
-                            )}
-                          </div>
+                      }
+                    </div>
+                    
+                    {/* Display related findings */}
+                    {relatedFindings.length > 0 && (
+                      <div className="mb-4 mt-3 border-l-4 border-blue-700 pl-4 py-2">
+                        <div className="flex justify-between items-center mb-2">
+                          <h5 className="text-sm font-semibold text-blue-300">Related Vulnerabilities:</h5>
                           
-                          <ul className="space-y-2">
-                            {(expandedReasonings.has(`${step.id}-findings`) 
-                              ? relatedFindings 
-                              : relatedFindings.slice(0, 2)
-                            ).map((finding, idx) => (
-                              <li key={idx} className="flex flex-col">
-                                <div className="flex items-center">
-                                  <span className="text-blue-300 mr-2">{finding.vulnerability_id}:</span>
-                                  <span className="text-gray-200">{finding.description}</span>
-                                  <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
-                                    finding.severity === 'high' ? 'bg-red-900 text-red-200' :
-                                    finding.severity === 'medium' ? 'bg-yellow-900 text-yellow-200' :
-                                    'bg-green-900 text-green-200'
-                                  }`}>
-                                    {finding.severity || 'low'}
-                                  </span>
-                                </div>
-                                
-                                {finding.line_content && (
-                                  <div className="text-xs mt-1 pl-4 border-l border-gray-600 py-1">
-                                    <span className="text-gray-400">Line {finding.line_number}: </span>
-                                    <code className="text-gray-300 bg-gray-800 p-1 rounded">
-                                      {finding.line_content}
-                                    </code>
-                                  </div>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      
-                      {/* Advanced evaluation section - toggleable */}
-                      {step.evaluation && (
-                        <div className="mt-3">
-                          {expandedReasonings.has(`${step.id}-eval`) ? (
-                            <>
-                              <div className="text-gray-300 text-sm bg-gray-800 p-4 rounded border border-gray-700 mb-2">
-                                <h5 className="font-medium text-blue-300 mb-3">Detailed Evaluation:</h5>
-                                {formatEvaluation(step.evaluation)}
-                              </div>
-                              <button 
-                                onClick={() => {
+                          {/* Show toggle button for related findings */}
+                          {relatedFindings.length > 2 && (
+                            <button 
+                              onClick={() => {
+                                if (expandedReasonings.has(`${step.id}-findings`)) {
                                   setExpandedReasonings(prev => {
                                     const newSet = new Set([...prev]);
-                                    newSet.delete(`${step.id}-eval`);
+                                    newSet.delete(`${step.id}-findings`);
                                     return newSet;
                                   });
-                                }}
-                                className="text-blue-400 hover:underline text-sm flex items-center"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                </svg>
-                                Hide detailed evaluation
-                              </button>
-                            </>
-                          ) : (
-                            <button 
-                              onClick={() => setExpandedReasonings(prev => new Set([...prev, `${step.id}-eval`]))}
-                              className="text-blue-400 hover:underline text-sm flex items-center"
+                                } else {
+                                  setExpandedReasonings(prev => new Set([...prev, `${step.id}-findings`]));
+                                }
+                              }} 
+                              className="text-blue-400 hover:underline text-xs"
                             >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
-                              Show detailed evaluation
+                              {expandedReasonings.has(`${step.id}-findings`) 
+                                ? "Show fewer" 
+                                : `Show all ${relatedFindings.length}`}
                             </button>
                           )}
                         </div>
-                      )}
-                      
-                      {step.conclusion && (
-                        <div className="mt-3 p-2 rounded bg-gray-800 border-l-4 border-r-4 px-3 flex justify-between items-center">
-                          <span className="text-gray-300">Conclusion:</span>
-                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            step.conclusion === 'confirmed' ? 'bg-red-900 text-red-200' :
-                            step.conclusion === 'new_vulnerability' ? 'bg-orange-900 text-orange-200' :
-                            step.conclusion === 'rejected' ? 'bg-green-900 text-green-200' :
-                            'bg-blue-900 text-blue-200'
-                          }`}>
-                            {step.conclusion.toUpperCase().replace('_', ' ')}
-                          </span>
-                        </div>
-                      )}
+                        
+                        <ul className="space-y-2">
+                          {(expandedReasonings.has(`${step.id}-findings`) 
+                            ? relatedFindings 
+                            : relatedFindings.slice(0, 2)
+                          ).map((finding, idx) => (
+                            <li key={idx} className="flex flex-col">
+                              <div className="flex items-center">
+                                <span className="text-blue-300 mr-2">{finding.vulnerability_id}:</span>
+                                <span className="text-gray-200">{finding.description}</span>
+                                <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
+                                  finding.severity === 'high' ? 'bg-red-900 text-red-200' :
+                                  finding.severity === 'medium' ? 'bg-yellow-900 text-yellow-200' :
+                                  'bg-green-900 text-green-200'
+                                }`}>
+                                  {finding.severity || 'low'}
+                                </span>
+                              </div>
+                              
+                              {finding.line_content && (
+                                <div className="text-xs mt-1 pl-4 border-l border-gray-600 py-1">
+                                  <span className="text-gray-400">Line {finding.line_number}: </span>
+                                  <code className="text-gray-300 bg-gray-800 p-1 rounded">
+                                    {finding.line_content}
+                                  </code>
+                                </div>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {/* Advanced evaluation section - toggleable */}
+                    {step.evaluation && (
+                      <div className="mt-3">
+                        {expandedReasonings.has(`${step.id}-eval`) ? (
+                          <>
+                            <div className="text-gray-300 text-sm bg-gray-800 p-4 rounded border border-gray-700 mb-2">
+                              <h5 className="font-medium text-blue-300 mb-3">Detailed Evaluation:</h5>
+                              
+                              {/* Format the evaluation into bullet points for better readability */}
+                              {(() => {
+                                // Split the evaluation text by sentences or other delimiters
+                                const evaluationText = step.evaluation;
+                                let evaluationPoints = [];
+                                
+                                // Try to split by sentences or key phrases
+                                if (evaluationText.includes('. ')) {
+                                  // Split by periods to get sentences
+                                  evaluationPoints = evaluationText.split('. ')
+                                    .filter(s => s.trim().length > 0)
+                                    .map(s => s.trim() + (s.endsWith('.') ? '' : '.'));
+                                } else if (evaluationText.length > 100) {
+                                  // If there's a long single sentence, try to break it up
+                                  const parts = evaluationText.split(/,|\band\b|\bor\b|\bbut\b|\bhowever\b|\bmoreover\b|\btherefore\b/gi);
+                                  evaluationPoints = parts
+                                    .filter(p => p.trim().length > 0)
+                                    .map(p => p.trim());
+                                } else {
+                                  // Just use as a single point if it's short
+                                  evaluationPoints = [evaluationText];
+                                }
+                                
+                                // If we couldn't split it into multiple points, try another approach
+                                if (evaluationPoints.length <= 1 && evaluationText.length > 120) {
+                                  // Split by character count to create multiple lines
+                                  evaluationPoints = [];
+                                  let remaining = evaluationText;
+                                  while (remaining.length > 0) {
+                                    const splitPoint = Math.min(120, remaining.length);
+                                    let actualSplitPoint = splitPoint;
+                                    
+                                    // Try to find a good break point (space)
+                                    if (splitPoint < remaining.length) {
+                                      const spaceIndex = remaining.lastIndexOf(' ', splitPoint);
+                                      if (spaceIndex > splitPoint / 2) {
+                                        actualSplitPoint = spaceIndex;
+                                      }
+                                    }
+                                    
+                                    evaluationPoints.push(remaining.substring(0, actualSplitPoint).trim());
+                                    remaining = remaining.substring(actualSplitPoint).trim();
+                                  }
+                                }
+                                
+                                // Render as bullet points if we have multiple points, otherwise as normal text
+                                return evaluationPoints.length > 1 ? (
+                                  <ul className="list-disc pl-5 space-y-2">
+                                    {evaluationPoints.map((point, i) => (
+                                      <li key={i}>{point}</li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p className="whitespace-pre-wrap">{evaluationText}</p>
+                                );
+                              })()}
+                            </div>
+                            <button 
+                              onClick={() => setExpandedReasonings(prev => {
+                                const newSet = new Set([...prev]);
+                                newSet.delete(`${step.id}-eval`);
+                                return newSet;
+                              })}
+                              className="text-blue-400 hover:underline text-sm flex items-center"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                              Hide detailed evaluation
+                            </button>
+                          </>
+                        ) : (
+                          <button 
+                            onClick={() => setExpandedReasonings(prev => new Set([...prev, `${step.id}-eval`]))}
+                            className="text-blue-400 hover:underline text-sm flex items-center"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                            Show detailed evaluation
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    
+                    {step.conclusion && (
+                      <div className="mt-3 p-2 rounded bg-gray-800 border-l-4 border-r-4 px-3 flex justify-between items-center">
+                        <span className="text-gray-300">Conclusion:</span>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          step.conclusion === 'confirmed' ? 'bg-red-900 text-red-200' :
+                          step.conclusion === 'new_vulnerability' ? 'bg-orange-900 text-orange-200' :
+                          step.conclusion === 'rejected' ? 'bg-green-900 text-green-200' :
+                          'bg-blue-900 text-blue-200'
+                        }`}>
+                          {step.conclusion.toUpperCase().replace('_', ' ')}
+                        </span>
+                      </div>
+                    )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -833,13 +826,11 @@ export default function Dashboard() {
               <div className="text-center mt-4">
                 {expandedReasonings.has('show-all-steps') ? (
                   <button 
-                    onClick={() => {
-                      setExpandedReasonings(prev => {
-                        const newSet = new Set([...prev]);
-                        newSet.delete('show-all-steps');
-                        return newSet;
-                      });
-                    }}
+                    onClick={() => setExpandedReasonings(prev => {
+                      const newSet = new Set([...prev]);
+                      newSet.delete('show-all-steps');
+                      return newSet;
+                    })}
                     className="px-4 py-2 bg-gray-700 text-gray-200 rounded-md hover:bg-gray-600 transition-all"
                   >
                     Show Fewer Analysis Steps
@@ -859,14 +850,12 @@ export default function Dashboard() {
             {expandedReasonings.has('filter-by-vuln') && (
               <div className="text-center mt-4">
                 <button 
-                  onClick={() => {
-                    setExpandedReasonings(prev => {
-                      const newSet = new Set([...prev]);
-                      // Remove all filter tags
-                      Array.from(newSet).filter(tag => tag.startsWith('filter-')).forEach(tag => newSet.delete(tag));
-                      return newSet;
-                    });
-                  }}
+                  onClick={() => setExpandedReasonings(prev => {
+                    const newSet = new Set([...prev]);
+                    // Remove all filter tags
+                    Array.from(newSet).filter(tag => tag.startsWith('filter-')).forEach(tag => newSet.delete(tag));
+                    return newSet;
+                  })}
                   className="px-4 py-2 bg-blue-700 text-white rounded-md hover:bg-blue-600 transition-all"
                 >
                   Reset Vulnerability Filter
@@ -875,6 +864,7 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+
       </div>
       
       {/* Vulnerability Details Modal */}
@@ -1008,7 +998,62 @@ export default function Dashboard() {
                               <div className="mt-4">
                                 <p className="text-sm font-medium text-gray-300 mb-2">Detailed Evaluation:</p>
                                 <div className="text-gray-300 text-sm bg-gray-800 p-4 rounded border border-gray-700">
-                                  {formatEvaluation(relatedReasoning.evaluation)}
+                                  {/* Format the evaluation into bullet points for better readability */}
+                                  {(() => {
+                                    // Split the evaluation text by sentences or other delimiters
+                                    const evaluationText = relatedReasoning.evaluation;
+                                    let evaluationPoints = [];
+                                    
+                                    // Try to split by sentences or key phrases
+                                    if (evaluationText.includes('. ')) {
+                                      // Split by periods to get sentences
+                                      evaluationPoints = evaluationText.split('. ')
+                                        .filter(s => s.trim().length > 0)
+                                        .map(s => s.trim() + (s.endsWith('.') ? '' : '.'));
+                                    } else if (evaluationText.length > 100) {
+                                      // If there's a long single sentence, try to break it up
+                                      const parts = evaluationText.split(/,|\band\b|\bor\b|\bbut\b|\bhowever\b|\bmoreover\b|\btherefore\b/gi);
+                                      evaluationPoints = parts
+                                        .filter(p => p.trim().length > 0)
+                                        .map(p => p.trim());
+                                    } else {
+                                      // Just use as a single point if it's short
+                                      evaluationPoints = [evaluationText];
+                                    }
+                                    
+                                    // If we couldn't split it into multiple points, try another approach
+                                    if (evaluationPoints.length <= 1 && evaluationText.length > 120) {
+                                      // Split by character count to create multiple lines
+                                      evaluationPoints = [];
+                                      let remaining = evaluationText;
+                                      while (remaining.length > 0) {
+                                        const splitPoint = Math.min(120, remaining.length);
+                                        let actualSplitPoint = splitPoint;
+                                        
+                                        // Try to find a good break point (space)
+                                        if (splitPoint < remaining.length) {
+                                          const spaceIndex = remaining.lastIndexOf(' ', splitPoint);
+                                          if (spaceIndex > splitPoint / 2) {
+                                            actualSplitPoint = spaceIndex;
+                                          }
+                                        }
+                                        
+                                        evaluationPoints.push(remaining.substring(0, actualSplitPoint).trim());
+                                        remaining = remaining.substring(actualSplitPoint).trim();
+                                      }
+                                    }
+                                    
+                                    // Render as bullet points if we have multiple points, otherwise as normal text
+                                    return evaluationPoints.length > 1 ? (
+                                      <ul className="list-disc pl-5 space-y-2">
+                                        {evaluationPoints.map((point, i) => (
+                                          <li key={i}>{point}</li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <p className="whitespace-pre-wrap">{evaluationText}</p>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             )}
