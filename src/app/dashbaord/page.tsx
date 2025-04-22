@@ -107,19 +107,37 @@ export default function Dashboard() {
 
 
   const determineSeverity = (finding: Finding): string => {
-    // First, check for critical keywords in the log content or description
-    const criticalPatterns = ['CMD_EXEC', 'COMMAND', 'SQL_INJECTION', 'REVERSE_SHELL', 
-                             'DEFAULT_CREDENTIALS', 'ROOT', 'ADMIN', 'ALERT USER=root'];
+    // High severity keywords
+    const highSeverityPatterns = [
+      '[WARN]', 'CRITICAL', 'danger', 'CMD_EXEC', 'COMMAND', 'SQL_INJECTION', 'REVERSE_SHELL',
+      'DEFAULT_CREDENTIALS', 'ROOT', 'ADMIN', 'ALERT USER=root', 'ERROR', 'EMERGENCY', 'FATAL',
+      'FAILURE', 'EXPLOIT', 'VULNERABILITY', 'BREACH', 'ATTACK', 'COMPROMISE'
+    ];
     
-    // Check if any critical patterns exist in the finding
-    const isCritical = criticalPatterns.some(pattern => 
+    // Medium severity keywords
+    const mediumSeverityPatterns = [
+      'warn', 'warning', 'attention', 'suspicious', 'unusual', 'detected', 'notice'
+    ];
+    
+    // Check if any high severity patterns exist in the finding
+    const isHighSeverity = highSeverityPatterns.some(pattern => 
       (finding.line_content && finding.line_content.includes(pattern)) ||
       (finding.description && finding.description.includes(pattern))
     );
     
-    // Always set to high severity for critical alerts
-    if (isCritical) {
+    // Always set to high severity for high severity alerts
+    if (isHighSeverity) {
       return 'high';
+    }
+    
+    // Check if any medium severity patterns exist in the finding
+    const isMediumSeverity = mediumSeverityPatterns.some(pattern => 
+      (finding.line_content && finding.line_content.toLowerCase().includes(pattern)) ||
+      (finding.description && finding.description.toLowerCase().includes(pattern))
+    );
+    
+    if (isMediumSeverity) {
+      return 'medium';
     }
     
     // For vulnerability IDs associated with critical issues
@@ -128,8 +146,18 @@ export default function Dashboard() {
       if (vulnId.includes('SQL-') || 
           vulnId.includes('RCE-') || 
           vulnId.includes('COMMAND-') || 
-          vulnId.includes('PATH-')) {
+          vulnId.includes('PATH-') ||
+          vulnId.includes('XSS-') ||
+          vulnId.includes('CSRF-') ||
+          vulnId.includes('SSRF-')) {
         return 'high';
+      }
+      
+      // Medium severity by vulnerability type
+      if (vulnId.includes('BOT-') ||
+          vulnId.includes('PROBING-') ||
+          vulnId.includes('SUSPICIOUS-')) {
+        return 'medium';
       }
     }
     
