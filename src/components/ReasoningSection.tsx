@@ -56,7 +56,11 @@ const ReasoningSection: React.FC<ReasoningSectionProps> = ({
         </div>
 
         {/* Then show the formatted bullets if available */}
+        {reasoningBullets && reasoningBullets.length > 0 && (
+          <div className="mt-6">
        
+          </div>
+        )}
       </div>
     </div>
   );

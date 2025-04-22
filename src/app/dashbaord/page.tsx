@@ -623,36 +623,190 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Recommendations */}
+        {/* Security Recommendations */}
         <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-gray-700 mb-8">
-          <h2 className="text-xl font-semibold mb-4 text-blue-400 border-b border-gray-700 pb-2">Security Recommendations</h2>
-          <ul className="space-y-4">
-            {results.deepseek_analysis.recommendations.map((rec, index) => (
-              <li key={index} className={`p-4 rounded-md border ${
-                rec.priority === 'high' ? 'border-red-700 bg-gray-900' :
-                rec.priority === 'medium' ? 'border-yellow-700 bg-gray-900' :
-                'border-green-700 bg-gray-900'
-              }`}>
-                <div className="flex items-start">
-                  <div className={`mt-1 mr-3 flex-shrink-0 w-3 h-3 rounded-full ${
-                    rec.priority === 'high' ? 'bg-red-500' :
-                    rec.priority === 'medium' ? 'bg-yellow-500' :
-                    'bg-green-500'
-                  }`}></div>
-                  <div>
-                    <h4 className={`font-bold mb-1 ${
-                      rec.priority === 'high' ? 'text-red-400' :
-                      rec.priority === 'medium' ? 'text-yellow-300' :
-                      'text-green-400'
+          <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+            <h2 className="text-xl font-semibold text-blue-400">Security Recommendations</h2>
+            <div className="flex space-x-2">
+              <button className="px-3 py-1 text-xs rounded bg-blue-700 text-white hover:bg-blue-600">
+                Export Report
+              </button>
+              <button className="px-3 py-1 text-xs rounded bg-gray-700 text-white hover:bg-gray-600">
+                Schedule Review
+              </button>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <h3 className="text-md font-medium text-gray-300 mb-2">Business Impact Assessment</h3>
+            <div className="bg-gray-900 p-4 rounded-md border border-gray-700">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="flex flex-col items-center p-3 rounded-md bg-gray-800 border border-gray-700">
+                  <h4 className="text-red-400 font-bold mb-1">Critical Risk Areas</h4>
+                  <p className="text-center text-gray-300 text-sm">
+                    {severityCounts.high > 0 ? 
+                      `${severityCounts.high} issues affecting revenue-generating systems` : 
+                      "No critical business risks detected"}
+                  </p>
+                </div>
+                <div className="flex flex-col items-center p-3 rounded-md bg-gray-800 border border-gray-700">
+                  <h4 className="text-yellow-300 font-bold mb-1">Operational Impact</h4>
+                  <p className="text-center text-gray-300 text-sm">
+                    {severityCounts.medium > 0 ? 
+                      `May disrupt ${severityCounts.medium} business processes` : 
+                      "No significant operational impact detected"}
+                  </p>
+                </div>
+                <div className="flex flex-col items-center p-3 rounded-md bg-gray-800 border border-gray-700">
+                  <h4 className="text-blue-400 font-bold mb-1">Compliance Status</h4>
+                  <p className="text-center text-gray-300 text-sm">
+                    {severityCounts.high > 0 ? 
+                      "At risk - Remediation required" : 
+                      severityCounts.medium > 0 ? 
+                        "Needs attention - Minor violations" : 
+                        "Compliant - No significant issues"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-md font-medium text-gray-300">Prioritized Actions</h3>
+              <select className="bg-gray-700 border border-gray-600 text-white rounded-md px-2 py-1 text-xs">
+                <option value="all">All Recommendations</option>
+                <option value="p1">P1 - Critical Only</option>
+                <option value="p2">P2 - High Only</option>
+                <option value="p3">P3 - Medium Only</option>
+              </select>
+            </div>
+            <div className={`${results.deepseek_analysis.recommendations.length > 3 ? 'max-h-[28rem] overflow-y-auto pr-2 recommendations-scroll relative' : ''}`}>
+              {results.deepseek_analysis.recommendations.length > 3 && (
+                <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-gray-800 to-transparent pointer-events-none z-10"></div>
+              )}
+              <ul className="space-y-4">
+                {results.deepseek_analysis.recommendations.map((rec, index) => {
+                  // Map the original priority to business-oriented priority levels
+                  const businessPriority = 
+                    rec.priority === 'high' ? 'P1' :
+                    rec.priority === 'medium' ? 'P2' : 'P3';
+                  
+                  // Business impact descriptions based on priority
+                  const businessImpact = 
+                    rec.priority === 'high' ? 'Potential revenue impact, security breach risk, or compliance violation' :
+                    rec.priority === 'medium' ? 'May affect business operations or customer experience' :
+                    'Minimal business impact, best practice recommendation';
+                  
+                  // SLA recommendations based on priority  
+                  const recommendedSLA = 
+                    rec.priority === 'high' ? '24 hours' :
+                    rec.priority === 'medium' ? '7 days' : '30 days';
+                  
+                  return (
+                    <li key={index} className={`p-4 rounded-md border ${
+                      rec.priority === 'high' ? 'border-red-700 bg-gray-900' :
+                      rec.priority === 'medium' ? 'border-yellow-700 bg-gray-900' :
+                      'border-green-700 bg-gray-900'
                     }`}>
-                      {rec.priority.toUpperCase()} PRIORITY
-                    </h4>
-                    <p className="text-gray-200">{rec.action}</p>
+                      <div className="flex flex-col md:flex-row">
+                        <div className="flex items-start flex-grow mb-3 md:mb-0">
+                          <div className={`mt-1 mr-3 flex-shrink-0 w-3 h-3 rounded-full ${
+                            rec.priority === 'high' ? 'bg-red-500' :
+                            rec.priority === 'medium' ? 'bg-yellow-500' :
+                            'bg-green-500'
+                          }`}></div>
+                          <div>
+                            <div className="flex items-center">
+                              <h4 className={`font-bold ${
+                                rec.priority === 'high' ? 'text-red-400' :
+                                rec.priority === 'medium' ? 'text-yellow-300' :
+                                'text-green-400'
+                              }`}>
+                                {businessPriority} - {rec.priority.toUpperCase()} PRIORITY
+                              </h4>
+                              <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-gray-700 text-gray-300">
+                                SLA: {recommendedSLA}
+                              </span>
+                            </div>
+                            <p className="text-gray-200 mb-2">{rec.action}</p>
+                            <p className="text-xs text-gray-400">
+                              <span className="font-medium">Business Impact:</span> {businessImpact}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex md:flex-col justify-end space-x-2 md:space-x-0 md:space-y-2 md:ml-4 flex-shrink-0">
+                          <button className={`px-3 py-1 text-xs rounded ${
+                            rec.priority === 'high' ? 'bg-red-700 text-white hover:bg-red-600' :
+                            rec.priority === 'medium' ? 'bg-yellow-700 text-white hover:bg-yellow-600' :
+                            'bg-green-700 text-white hover:bg-green-600'
+                          }`}>
+                            Escalate
+                          </button>
+                          <button className="px-3 py-1 text-xs rounded bg-blue-700 text-white hover:bg-blue-600">
+                            Assign
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
+          
+          <div className="mt-6">
+            <h3 className="text-md font-medium text-gray-300 mb-3">Executive Summary</h3>
+            <div className="bg-gray-900 p-4 rounded-md border border-gray-700">
+              <div className="flex flex-col md:flex-row items-center md:items-start mb-4">
+                <div className="w-full md:w-2/3">
+                  <h4 className="font-bold text-white mb-2">Key Insights</h4>
+                  <ul className="list-disc pl-5 space-y-1 text-gray-300 text-sm">
+                    {severityCounts.high > 0 && (
+                      <li>Critical security issues detected that require immediate attention within 24 hours to mitigate business risk</li>
+                    )}
+                    {severityCounts.medium > 0 && (
+                      <li>Operational vulnerabilities identified that should be addressed within 7 days to prevent service disruption</li>
+                    )}
+                    {severityCounts.low > 0 && (
+                      <li>Minor security recommendations to improve overall security posture</li>
+                    )}
+                    <li>Overall security health requires {severityCounts.high > 0 ? 'urgent intervention' : severityCounts.medium > 0 ? 'planned remediation' : 'routine maintenance'}</li>
+                  </ul>
+                </div>
+                <div className="mt-4 md:mt-0 md:ml-4 md:w-1/3">
+                  <div className="bg-gray-800 p-3 rounded-md border border-gray-700">
+                    <h4 className="font-bold text-white mb-2 text-center">Resource Requirements</h4>
+                    <div className="grid grid-cols-2 gap-2 text-center">
+                      <div>
+                        <p className="text-xs text-gray-400">Estimated effort</p>
+                        <p className="text-sm font-bold text-white">
+                          {severityCounts.high * 8 + severityCounts.medium * 4 + severityCounts.low} hours
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400">Team size</p>
+                        <p className="text-sm font-bold text-white">
+                          {severityCounts.high > 0 ? 3 : severityCounts.medium > 0 ? 2 : 1}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </li>
-            ))}
-          </ul>
+              </div>
+              <div className="mt-4 flex flex-wrap justify-end space-x-3">
+                <button className="px-3 py-1 text-xs rounded bg-blue-700 text-white hover:bg-blue-600">
+                  Create JIRA Tickets
+                </button>
+                <button className="px-3 py-1 text-xs rounded bg-gray-700 text-white hover:bg-gray-600">
+                  Schedule Review Meeting
+                </button>
+                <button className="px-3 py-1 text-xs rounded bg-purple-700 text-white hover:bg-purple-600">
+                  Generate Executive Report
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
         
         {/* LM Studio Reasoning Section */}
