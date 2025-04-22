@@ -105,6 +105,40 @@ export default function Dashboard() {
     setCurrentPage(1);
   }, [severityFilter, typeFilter, searchTerm]);
 
+
+  const determineSeverity = (finding: Finding): string => {
+    // First, check for critical keywords in the log content or description
+    const criticalPatterns = ['CMD_EXEC', 'COMMAND', 'SQL_INJECTION', 'REVERSE_SHELL', 
+                             'DEFAULT_CREDENTIALS', 'ROOT', 'ADMIN', 'ALERT USER=root'];
+    
+    // Check if any critical patterns exist in the finding
+    const isCritical = criticalPatterns.some(pattern => 
+      (finding.line_content && finding.line_content.includes(pattern)) ||
+      (finding.description && finding.description.includes(pattern))
+    );
+    
+    // Always set to high severity for critical alerts
+    if (isCritical) {
+      return 'high';
+    }
+    
+    // For vulnerability IDs associated with critical issues
+    if (finding.vulnerability_id) {
+      const vulnId = finding.vulnerability_id.toUpperCase();
+      if (vulnId.includes('SQL-') || 
+          vulnId.includes('RCE-') || 
+          vulnId.includes('COMMAND-') || 
+          vulnId.includes('PATH-')) {
+        return 'high';
+      }
+    }
+    
+    // Return the original severity if it's already set
+    return finding.severity || 'low';
+  };
+  
+
+
   if (loading) {
     return (
       <div className="flex flex-col justify-center items-center min-h-screen bg-gray-900">
@@ -288,16 +322,45 @@ export default function Dashboard() {
               {results.log_summary.log_format && (
                 <p className="mb-2"><span className="font-medium text-gray-300">Log Format:</span> <span className="text-white">{results.log_summary.log_format}</span></p>
               )}
-              <p className="mb-2">
-                <span className="font-medium text-gray-300">Threat Level:</span> 
-                <span className={`ml-2 px-2 py-1 rounded text-xs ${
-                  severityCounts.high > 0 ? 'bg-red-900 text-red-200' : 
-                  severityCounts.medium > 0 ? 'bg-yellow-900 text-yellow-200' : 
-                  'bg-green-900 text-green-200'
-                }`}>
-                  {severityCounts.high > 0 ? 'HIGH' : severityCounts.medium > 0 ? 'MEDIUM' : 'LOW'}
-                </span>
-              </p>
+              <div className="mb-4 p-3 rounded-md border border-gray-700 bg-gray-900">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center mb-2">
+                      <span className="font-medium text-gray-300">Threat Level:</span> 
+                      <span className={`ml-2 px-2 py-1 rounded text-xs ${
+                        severityCounts.high > 0 ? 'bg-red-900 text-red-200' : 
+                        severityCounts.medium > 0 ? 'bg-yellow-900 text-yellow-200' : 
+                        'bg-green-900 text-green-200'
+                      }`}>
+                        {severityCounts.high > 0 ? 'HIGH' : severityCounts.medium > 0 ? 'MEDIUM' : 'LOW'}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-400">
+                      {severityCounts.high > 0 
+                        ? `Threat level will remain HIGH until all ${severityCounts.high} high severity issues are resolved.` 
+                        : severityCounts.medium > 0 
+                          ? `Threat level will remain MEDIUM until all ${severityCounts.medium} medium severity issues are resolved.`
+                          : "Threat level is LOW. Continue monitoring for new threats."}
+                    </p>
+                  </div>
+                  
+                  {/* Mini graph visualization */}
+                  <div className="w-24 h-16 flex items-end">
+                    <div className="w-6 h-12 bg-gradient-to-t from-red-700 to-red-500 opacity-70 rounded-t mr-1 relative">
+                      <span className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs text-red-400">H</span>
+                      <span className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xs text-white font-bold">{severityCounts.high}</span>
+                    </div>
+                    <div className="w-6 h-8 bg-gradient-to-t from-yellow-700 to-yellow-500 opacity-70 rounded-t mr-1 relative">
+                      <span className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs text-yellow-400">M</span>
+                      <span className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xs text-white font-bold">{severityCounts.medium}</span>
+                    </div>
+                    <div className="w-6 h-4 bg-gradient-to-t from-green-700 to-green-500 opacity-70 rounded-t relative">
+                      <span className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-xs text-green-400">L</span>
+                      <span className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xs text-white font-bold">{severityCounts.low}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
