@@ -19,7 +19,7 @@ export default function RootLayout({
       <body className={`${inter.className} bg-gray-100 min-h-screen`}>
         <nav className="bg-blue-800 text-white p-4 shadow-md">
           <div className="container mx-auto">
-            <h1 className="text-xl font-bold">Log File Vulnerability Analyzer</h1>
+            <h1 className="text-xl font-bold">AI Spector for Log analatics and feeback</h1>
           </div>
         </nav>
         <main>{children}</main>

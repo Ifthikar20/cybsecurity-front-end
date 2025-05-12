@@ -154,7 +154,7 @@ export default function Home() {
       <main className="flex-grow p-4 flex flex-col max-w-5xl mx-auto w-full">
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-center text-blue-400 mb-6">
-            Analyze Log Files for Security Vulnerabilities
+           AI - Spector for log analatics
           </h2>
           
           {/* File Upload Section */}
@@ -174,10 +174,13 @@ export default function Home() {
             
             {fileContent && (
               <div className="mt-4 p-3 border border-gray-600 rounded-lg bg-gray-700">
-                <h4 className="font-medium mb-2 text-gray-300">File Preview:</h4>
-                <pre className="bg-gray-800 p-3 rounded-md text-sm overflow-x-auto max-h-40 text-gray-300">
-                  {fileContent.length > 500 
-                    ? `${fileContent.substring(0, 500)}...` 
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-medium text-gray-300">File Preview:</h4>
+                  <span className="text-xs text-gray-400">{(fileContent.length / 1000).toFixed(1)}KB • {fileContent.split('\n').length} lines</span>
+                </div>
+                <pre className="bg-gray-800 p-4 rounded-md text-sm overflow-auto max-h-[250px] text-gray-300 font-mono border border-gray-600">
+                  {fileContent.length > 2000 
+                    ? `${fileContent.substring(0, 2000)}...\n\n[${(fileContent.length - 2000).toLocaleString()} more characters]` 
                     : fileContent}
                 </pre>
               </div>
@@ -209,10 +212,12 @@ export default function Home() {
           <div className="bg-gray-800 rounded-lg shadow-lg overflow-hidden border border-gray-700">
             <div className="p-4">
               <textarea
-                className="w-full p-3 bg-gray-700 text-gray-100 border border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[120px] placeholder-gray-500"
+                className="w-full p-4 bg-gray-700 text-gray-100 border border-gray-600 rounded-lg resize-y focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[250px] placeholder-gray-500 font-mono text-sm"
                 placeholder="Paste your log data here for analysis..."
                 value={textInput}
                 onChange={handleTextChange}
+                spellCheck="false"
+                rows={12}
               ></textarea>
               
               <div className="flex justify-end mt-3">
